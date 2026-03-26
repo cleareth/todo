@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>To‑do</title>
+
+  <link rel="stylesheet" href="https://fonts.googleapis.com/cssck+Hand&family=Inter:wght@400;500&display=swap" >
+  <style>
+    :root {
+      --paper: #fffdf7;
+      --paper-edge: #f2eadb;
+      --background: #f6f1e7;
+      --ink: #2c2a28;
+      --muted: #6f6a63;
+      --line: #eee4d1;
+      --button: #efe4cf;
+      --button-hover: #e6d7bc;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--background);
+      color: var(--ink);
+      font-family: "Patrick Hand", cursive;
+      display: flex;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    #paper {
+      width: min(960px, 94vw);
+      min-height: 70vh;
+      background: linear-gradient(to bottom, var(--paper) 0%, #fffdf8 100%);
+      border: 1px solid var(--paper-edge);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      padding: 28px 28px 24px;
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-size: clamp(2rem, 3vw, 2.6rem);
+      font-weight: 400;
+      line-height: 1.1;
+    }
+
+    #date {
+      font-family: "Inter", sans-serif;
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 22px;
+    }
+
+    #list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .todo-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 48px;
+      padding: 8px 4px;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+    }
+
+    .todo-item.dragging {
+      opacity: 0.55;
+    }
+
+    .drag-handle {
+      user-select: none;
+      cursor: grab;
+      color: #9a9388;
+      font-size: 1.15rem;
+      line-height: 1;
+      width: 20px;
+      text-align: center;
+      flex: 0 0 auto;
+    }
+
+    .drag-handle:active {
+      cursor: grabbing;
+    }
+
+    .todo-check {
+      transform: scale(1.2);
+      accent-color: #7f7a70;
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
+
+    .todo-text {
+      flex: 1 1 auto;
+      min-width: 0;
+      outline: none;
+      font-size: 1.45rem;
+      line-height: 1.35;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .todo-text:empty::before {
+      content: "Write something…";
+      color: #b5aea3;
+    }
+
+    .todo-text.done {
+      text-decoration: line-through;
+      opacity: 0.58;
+    }
+
+    #addBtn {
+      margin-top: 18px;
+      width: 100%;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 16px;
+      background: var(--button);
+      color: var(--ink);
+      font-family: "Patrick Hand", cursive;
+      font-size: 1.35rem;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    #addBtn:hover {
+      background: var(--button-hover);
+    }
+
+    #addBtn:focus-visible,
+    .todo-text:focus-visible {
+      outline: 2px solid #c9b38b;
+      outline-offset: 2px;
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 14px;
+      }
+
+      #paper {
+        width: 100%;
+        padding: 20px 18px 18px;
+        min-height: auto;
+      }
+
+      .todo-text {
+        font-size: 1.25rem;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main id="paper">
+    <h1>To-do</h1>
+    <div id="date"></div>
+
+    <ul id="list" aria-label="To-do list"></ul>
+
+    <button id="addBtn" type="button">+ Add</button>
+  </main>
+
+  <script>
+    const list = document.getElementById("list");
+    const addBtn = document.getElementById("addBtn");
+    const COOKIE_NAME = "todos";
+    const COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
+
+    function setCookie(name, value) {
+      document.cookie =
+        name +
+        "=" +
+        encodeURIComponent(value) +
+        "; path=/; max-age=" +
+        COOKIE_MAX_AGE +
+        "; SameSite=Lax";
+    }
+
+    function getCookie(name) {
+      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const match = document.cookie.match(
+        new RegExp("(?:^|; )" + escaped + "=([^;]*)")
+      );
+      return match ? decodeURIComponent(match[1]) : null;
+    }
+
+    function setDate() {
+      const now = new Date();
+      const formatted = now.toLocaleDateString(undefined, {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric"
+      });
+      document.getElementById("date").textContent = formatted;
+    }
+
+    function readTodosFromDOM() {
+      return [...list.querySelectorAll(".todo-item")]
+        .map((item) => {
+          const text = item.querySelector(".todo-text").textContent.trim();
+          const checked = item.querySelector(".todo-check").checked;
+          return { text, checked };
+        })
+        .filter((todo) => todo.text !== "");
+    }
+
+    function saveTodos() {
+      const todos = readTodosFromDOM();
+      setCookie(COOKIE_NAME, JSON.stringify(todos));
+    }
+
+    function removeIfEmpty(item) {
+      const textEl = item.querySelector(".todo-text");
+      if (textEl.textContent.trim() === "") {
+        item.remove();
+        saveTodos();
+
+        // Keep one empty row if the list becomes completely empty
+        if (!list.children.length) {
+          const newItem = createTodoItem();
+          list.appendChild(newItem);
+          focusText(newItem);
+        }
+      }
+    }
+
+    function updateDoneState(item) {
+      const checkbox = item.querySelector(".todo-check");
+      const textEl = item.querySelector(".todo-text");
+      textEl.classList.toggle("done", checkbox.checked);
+    }
+
+    function focusText(item) {
+      const textEl = item.querySelector(".todo-text");
+      textEl.focus();
+
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(textEl);
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    function createTodoItem(text = "", checked = false) {
+      const li = document.createElement("li");
+      li.className = "todo-item";
+
+      li.innerHTML = `
+        <span class="drag-handle" draggable="true" title="Drag to reorder" aria-hidden="true">⋮⋮</span>
+        <input class="todo-check" type="checkbox" aria-label="Mark to-do complete">
+        <div class="todo-text" contenteditable="true" spellcheck="false" role="textbox" aria-label="To-do text"></div>
+      `;
+
+      const checkbox = li.querySelector(".todo-check");
+      const textEl = li.querySelector(".todo-text");
+      const handle = li.querySelector(".drag-handle");
+
+      checkbox.checked = checked;
+      textEl.textContent = text;
+      updateDoneState(li);
+
+      checkbox.addEventListener("change", () => {
+        updateDoneState(li);
+        saveTodos();
+      });
+
+      textEl.addEventListener("input", () => {
+        saveTodos();
+      });
+
+      textEl.addEventListener("blur", () => {
+        removeIfEmpty(li);
+        saveTodos();
+      });
+
+      // Prevent line breaks in the editable field.
+      textEl.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          textEl.blur();
+        }
+      });
+
+      // Drag and drop
+      handle.addEventListener("dragstart", () => {
+        li.classList.add("dragging");
+      });
+
+      handle.addEventListener("dragend", () => {
+        li.classList.remove("dragging");
+        saveTodos();
+      });
+
+      return li;
+    }
+
+    function getDragAfterElement(container, y) {
+      const items = [
+        ...container.querySelectorAll(".todo-item:not(.dragging)")
+      ];
+
+      return items.reduce(
+        (closest, child) => {
+          const box = child.getBoundingClientRect();
+          const offset = y - box.top - box.height / 2;
+
+          if (offset < 0 && offset > closest.offset) {
+            return { offset, element: child };
+          }
+          return closest;
+        },
+        { offset: Number.NEGATIVE_INFINITY, element: null }
+      ).element;
+    }
+
+    function loadTodos() {
+      const saved = getCookie(COOKIE_NAME);
+      list.innerHTML = "";
+
+      if (!saved) {
+        list.appendChild(createTodoItem());
+        return;
+      }
+
+      try {
+        const todos = JSON.parse(saved);
+        if (Array.isArray(todos) && todos.length) {
+          todos.forEach((todo) => {
+            list.appendChild(createTodoItem(todo.text || "", !!todo.checked));
+          });
+        } else {
+          list.appendChild(createTodoItem());
+        }
+      } catch {
+        list.appendChild(createTodoItem());
+      }
+    }
+
+    addBtn.addEventListener("click", () => {
+      const item = createTodoItem();
+      list.appendChild(item);
+      saveTodos();
+      focusText(item);
+    });
+
+    list.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      const dragging = list.querySelector(".dragging");
+      if (!dragging) return;
+
+      const afterElement = getDragAfterElement(list, event.clientY);
+      if (afterElement == null) {
+        list.appendChild(dragging);
+      } else {
+        list.insertBefore(dragging, afterElement);
+      }
+    });
+
+    setDate();
+    loadTodos();
+  </script>
+</body>
+</html>
